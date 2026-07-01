@@ -724,19 +724,22 @@ function drawFlagDots() {
     const bits = bitsConfig.bits;
     if (bits.length === 0)
         return;
-    const dotR = Math.max(1.5, CONFIG.dTile * 0.08);
+    const d = gridDTile();
+    const dotR = Math.max(1.5, d * 0.08);
     const pad = dotR + 1;
     const perRow = 4;
-    const maxTiles = getMaxTiles();
+    const cols = Math.max(1, Math.floor(CONFIG.imgW / gridTileSize));
+    const rows = Math.max(1, Math.floor(CONFIG.imgH / gridTileSize));
+    const maxTiles = cols * rows;
     tilesCtx.save();
     for (let idx = 0; idx < maxTiles; idx++) {
         const mask = tileFlags[idx];
         if (mask === 0)
             continue;
-        const col = idx % CONFIG.tilesheetCols;
-        const row = Math.floor(idx / CONFIG.tilesheetCols);
-        const cellX = col * CONFIG.dTile;
-        const cellY = row * CONFIG.dTile;
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
+        const cellX = col * d;
+        const cellY = row * d;
         let dotIdx = 0;
         for (let b = 0; b < TOTAL_BITS; b++) {
             if (!hasBit(idx, b))
@@ -760,11 +763,12 @@ function drawFlagDots() {
 function drawSheetHover() {
     if (sheetHover.col < 0 || sheetHover.row < 0)
         return;
-    const sx = sheetHover.col * CONFIG.dTile;
-    const sy = sheetHover.row * CONFIG.dTile;
+    const d = gridDTile();
+    const sx = sheetHover.col * d;
+    const sy = sheetHover.row * d;
     tilesCtx.strokeStyle = '#ffd700';
     tilesCtx.lineWidth = 2;
-    tilesCtx.strokeRect(sx + 0.5, sy + 0.5, CONFIG.dTile - 1, CONFIG.dTile - 1);
+    tilesCtx.strokeRect(sx + 0.5, sy + 0.5, d - 1, d - 1);
 }
 function drawTilesheetGrid() {
     const wDivisible = CONFIG.imgW % gridTileSize === 0;
@@ -790,10 +794,15 @@ function drawTilesheetGrid() {
     }
 }
 function drawActiveHighlight() {
-    const { sx, sy } = tileDisplayXY(activeTile);
+    const d = gridDTile();
+    const cols = Math.max(1, Math.floor(CONFIG.imgW / gridTileSize));
+    const col = activeTile % cols;
+    const row = Math.floor(activeTile / cols);
+    const sx = col * d;
+    const sy = row * d;
     tilesCtx.strokeStyle = '#e94560';
     tilesCtx.lineWidth = 2.5;
-    tilesCtx.strokeRect(sx + 1, sy + 1, CONFIG.dTile - 2, CONFIG.dTile - 2);
+    tilesCtx.strokeRect(sx + 1, sy + 1, d - 2, d - 2);
 }
 function updateActiveDisplay() {
     const col = activeTile % CONFIG.tilesheetCols;
@@ -903,16 +912,20 @@ function placeTileOnMap(p) {
 // ─── Event handlers ───────────────────────────────────────────────────────────
 tilesCanvas.addEventListener('mousedown', (e) => {
     const p = canvasCoords(e, tilesCanvas);
-    const cell = cellFromPoint(p);
-    if (!isCellInBounds(cell, CONFIG.tilesheetCols, CONFIG.tilesheetRows))
+    const d = gridDTile();
+    const col = Math.floor(p.x / d);
+    const row = Math.floor(p.y / d);
+    const cols = Math.max(1, Math.floor(CONFIG.imgW / gridTileSize));
+    const rows = Math.max(1, Math.floor(CONFIG.imgH / gridTileSize));
+    if (col < 0 || col >= cols || row < 0 || row >= rows)
         return;
     if (e.button === 0) {
-        activeTile = tileIndexFromCoord(cell.col, cell.row);
+        activeTile = row * cols + col;
         updateActiveDisplay();
         drawTilesheet();
     }
     else if (e.button === 2) {
-        const idx = tileIndexFromCoord(cell.col, cell.row);
+        const idx = row * cols + col;
         toggleBit(idx, activeBitIndex);
         saveBitsConfig();
         updateActiveDisplay();
@@ -922,8 +935,12 @@ tilesCanvas.addEventListener('mousedown', (e) => {
 });
 tilesCanvas.addEventListener('mousemove', (e) => {
     const p = canvasCoords(e, tilesCanvas);
-    const cell = cellFromPoint(p);
-    sheetHover = isCellInBounds(cell, CONFIG.tilesheetCols, CONFIG.tilesheetRows) ? cell : { col: -1, row: -1 };
+    const d = gridDTile();
+    const col = Math.floor(p.x / d);
+    const row = Math.floor(p.y / d);
+    const cols = Math.max(1, Math.floor(CONFIG.imgW / gridTileSize));
+    const rows = Math.max(1, Math.floor(CONFIG.imgH / gridTileSize));
+    sheetHover = (col >= 0 && col < cols && row >= 0 && row < rows) ? { col, row } : { col: -1, row: -1 };
     drawTilesheet();
 });
 tilesCanvas.addEventListener('mouseleave', () => { sheetHover = { col: -1, row: -1 }; drawTilesheet(); });
