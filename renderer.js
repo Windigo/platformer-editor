@@ -1178,23 +1178,34 @@ function updateModalIffPreview() {
         const { palette, indexMap } = result;
         const w = img.width;
         const h = img.height;
-        modalIffPreviewCanvas.width = w;
-        modalIffPreviewCanvas.height = h;
-        const ctx = modalIffPreviewCanvas.getContext('2d');
-        ctx.imageSmoothingEnabled = false;
-        const imageData = ctx.createImageData(w, h);
-        for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-                const idx = indexMap[y * w + x];
-                const colOff = idx * 3;
-                const pxOff = (y * w + x) * 4;
-                imageData.data[pxOff] = palette[colOff];
-                imageData.data[pxOff + 1] = palette[colOff + 1];
-                imageData.data[pxOff + 2] = palette[colOff + 2];
-                imageData.data[pxOff + 3] = 255;
-            }
+        // Build full-resolution quantized image on a temp canvas
+        const tmp = document.createElement('canvas');
+        tmp.width = w;
+        tmp.height = h;
+        const tctx = tmp.getContext('2d');
+        const imageData = tctx.createImageData(w, h);
+        for (let i = 0; i < w * h; i++) {
+            const idx = indexMap[i];
+            const colOff = idx * 3;
+            const pxOff = i * 4;
+            imageData.data[pxOff] = palette[colOff];
+            imageData.data[pxOff + 1] = palette[colOff + 1];
+            imageData.data[pxOff + 2] = palette[colOff + 2];
+            imageData.data[pxOff + 3] = 255;
         }
-        ctx.putImageData(imageData, 0, 0);
+        tctx.putImageData(imageData, 0, 0);
+        // Scale to fit 200px
+        const maxDim = 200;
+        const scale = Math.min(maxDim / w, maxDim / h, 1);
+        const dw = Math.round(w * scale);
+        const dh = Math.round(h * scale);
+        modalIffPreviewCanvas.width = dw;
+        modalIffPreviewCanvas.height = dh;
+        const ctx = modalIffPreviewCanvas.getContext('2d');
+        ctx.clearRect(0, 0, dw, dh);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(tmp, 0, 0, w, h, 0, 0, dw, dh);
+        modalIffPreviewCanvas.style.display = 'block';
     };
     img.src = pickedPngDataUrl;
 }
