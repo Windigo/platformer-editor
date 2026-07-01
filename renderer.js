@@ -1484,125 +1484,55 @@ function drawPaletteSwatches(palette, nPlanes) {
     }
     convPaletteSwatches.innerHTML = html;
 }
-function medianCutQuantize(rgb, maxColors) {
+// ─── Color quantization: Frequency-based (uses exact image colors) ───────
+function frequencyQuantize(rgb, maxColors) {
     const numPixels = rgb.length / 4;
     if (numPixels === 0 || maxColors === 0) {
         return { palette: new Uint8Array(0), indexMap: new Uint8Array(0) };
     }
-    // Build initial pixel list
-    const allPixels = [];
-    let rMin = 255, rMax = 0, gMin = 255, gMax = 0, bMin = 255, bMax = 0;
+    // Count frequency of each unique RGB color
+    // Key = packed 24-bit integer: (R << 16) | (G << 8) | B
+    const colorFreq = new Map();
+    const colorRGB = new Map();
     for (let i = 0; i < numPixels; i++) {
         const off = i * 4;
         const r = rgb[off], g = rgb[off + 1], b = rgb[off + 2];
-        if (r < rMin)
-            rMin = r;
-        if (r > rMax)
-            rMax = r;
-        if (g < gMin)
-            gMin = g;
-        if (g > gMax)
-            gMax = g;
-        if (b < bMin)
-            bMin = b;
-        if (b > bMax)
-            bMax = b;
-        allPixels.push(i);
+        const key = (r << 16) | (g << 8) | b;
+        colorFreq.set(key, (colorFreq.get(key) || 0) + 1);
+        if (!colorRGB.has(key))
+            colorRGB.set(key, [r, g, b]);
     }
-    let bins = [{ pixels: allPixels, rMin, rMax, gMin, gMax, bMin, bMax }];
-    // Split bins until we reach maxColors
-    while (bins.length < maxColors) {
-        // Find bin with widest range
-        let bestIdx = 0;
-        let bestRange = 0;
-        for (let i = 0; i < bins.length; i++) {
-            const b = bins[i];
-            if (b.pixels.length <= 1)
-                continue;
-            const rRange = b.rMax - b.rMin;
-            const gRange = b.gMax - b.gMin;
-            const bRange = b.bMax - b.bMin;
-            const maxRange = Math.max(rRange, gRange, bRange);
-            if (maxRange > bestRange) {
-                bestRange = maxRange;
-                bestIdx = i;
-            }
-        }
-        if (bestRange === 0)
-            break; // all bins are single-color
-        const bin = bins[bestIdx];
-        // Choose channel to split on
-        const rRange = bin.rMax - bin.rMin;
-        const gRange = bin.gMax - bin.gMin;
-        const bRange = bin.bMax - bin.bMin;
-        let channel;
-        if (rRange >= gRange && rRange >= bRange)
-            channel = 'r';
-        else if (gRange >= bRange)
-            channel = 'g';
-        else
-            channel = 'b';
-        // Sort pixels by chosen channel
-        const getVal = (pi) => {
-            const off = pi * 4;
-            if (channel === 'r')
-                return rgb[off];
-            if (channel === 'g')
-                return rgb[off + 1];
-            return rgb[off + 2];
-        };
-        bin.pixels.sort((a, b) => getVal(a) - getVal(b));
-        // Split at median
-        const mid = Math.floor(bin.pixels.length / 2);
-        const leftPixels = bin.pixels.slice(0, mid);
-        const rightPixels = bin.pixels.slice(mid);
-        function computeBounds(pxs) {
-            let rMn = 255, rMx = 0, gMn = 255, gMx = 0, bMn = 255, bMx = 0;
-            for (const pi of pxs) {
-                const off = pi * 4;
-                const r = rgb[off], g = rgb[off + 1], b = rgb[off + 2];
-                if (r < rMn)
-                    rMn = r;
-                if (r > rMx)
-                    rMx = r;
-                if (g < gMn)
-                    gMn = g;
-                if (g > gMx)
-                    gMx = g;
-                if (b < bMn)
-                    bMn = b;
-                if (b > bMx)
-                    bMx = b;
-            }
-            return { rMin: rMn, rMax: rMx, gMin: gMn, gMax: gMx, bMin: bMn, bMax: bMx };
-        }
-        const leftBounds = computeBounds(leftPixels);
-        const rightBounds = computeBounds(rightPixels);
-        bins.splice(bestIdx, 1, { pixels: leftPixels, ...leftBounds }, { pixels: rightPixels, ...rightBounds });
+    // Sort colors by frequency (most common first)
+    const sorted = [...colorFreq.entries()].sort((a, b) => b[1] - a[1]);
+    // Take top N colors — but never exceed the actual count
+    const paletteSize = Math.min(sorted.length, maxColors);
+    const topColors = sorted.slice(0, paletteSize);
+    // Build color → index lookup map
+    const colorToIndex = new Map();
+    const palette = new Uint8Array(paletteSize * 3);
+    for (let i = 0; i < paletteSize; i++) {
+        const key = topColors[i][0];
+        const [r1, g1, b1] = colorRGB.get(key);
+        palette[i * 3] = r1;
+        palette[i * 3 + 1] = g1;
+        palette[i * 3 + 2] = b1;
+        colorToIndex.set(key, i);
     }
-    // Build palette: average color of each bin
-    const palette = new Uint8Array(bins.length * 3);
-    for (let i = 0; i < bins.length; i++) {
-        let rSum = 0, gSum = 0, bSum = 0;
-        for (const pi of bins[i].pixels) {
-            const off = pi * 4;
-            rSum += rgb[off];
-            gSum += rgb[off + 1];
-            bSum += rgb[off + 2];
-        }
-        const n = bins[i].pixels.length || 1;
-        palette[i * 3] = Math.round(rSum / n);
-        palette[i * 3 + 1] = Math.round(gSum / n);
-        palette[i * 3 + 2] = Math.round(bSum / n);
-    }
-    // Build index map: assign each pixel to nearest palette color
+    // Build index map: exact match for palette colors, nearest-neighbor for others
     const indexMap = new Uint8Array(numPixels);
     for (let i = 0; i < numPixels; i++) {
         const off = i * 4;
         const r = rgb[off], g = rgb[off + 1], b = rgb[off + 2];
+        const key = (r << 16) | (g << 8) | b;
+        const exact = colorToIndex.get(key);
+        if (exact !== undefined) {
+            indexMap[i] = exact;
+            continue;
+        }
+        // Nearest-neighbor fallback (only needed when #unique > maxColors)
         let bestDist = Infinity;
         let bestIdx = 0;
-        for (let c = 0; c < bins.length; c++) {
+        for (let c = 0; c < paletteSize; c++) {
             const pr = palette[c * 3], pg = palette[c * 3 + 1], pb = palette[c * 3 + 2];
             const dr = r - pr, dg = g - pg, db = b - pb;
             const dist = dr * dr + dg * dg + db * db;
@@ -1630,7 +1560,7 @@ function pngToIffMulti(img, nPlanes) {
     const imageData = ctx.getImageData(0, 0, w, h);
     const rgb = imageData.data; // RGBA
     // Quantize
-    const quant = medianCutQuantize(rgb, maxColors);
+    const quant = frequencyQuantize(rgb, maxColors);
     const palette = quant.palette;
     const indexMap = quant.indexMap;
     // Build interleaved BODY: for each row, for each plane, pack bits
