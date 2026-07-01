@@ -1159,6 +1159,7 @@ const modalBpSlider = document.getElementById('modal-bitplanes');
 const modalBpLabel = document.getElementById('modal-bp-label');
 const modalColorsLabel = document.getElementById('modal-colors-label');
 const modalIffPreviewRow = document.getElementById('modal-iff-preview-row');
+const modalPngPreviewCanvas = document.getElementById('modal-png-preview-canvas');
 const modalIffPreviewCanvas = document.getElementById('modal-iff-preview-canvas');
 modalBpSlider.addEventListener('input', () => {
     modalBp = parseInt(modalBpSlider.value);
@@ -1206,6 +1207,14 @@ function updateModalIffPreview() {
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(tmp, 0, 0, w, h, 0, 0, dw, dh);
         modalIffPreviewCanvas.style.display = 'block';
+        // Also draw original PNG for comparison
+        modalPngPreviewCanvas.width = dw;
+        modalPngPreviewCanvas.height = dh;
+        const pngCtx = modalPngPreviewCanvas.getContext('2d');
+        pngCtx.clearRect(0, 0, dw, dh);
+        pngCtx.imageSmoothingEnabled = false;
+        pngCtx.drawImage(img, 0, 0, w, h, 0, 0, dw, dh);
+        modalPngPreviewCanvas.style.display = 'block';
     };
     img.src = pickedPngDataUrl;
 }

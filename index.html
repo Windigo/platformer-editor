@@ -107,7 +107,10 @@
               <label>Bitplanes: <strong id="modal-bp-label">4</strong> (<span id="modal-colors-label">16 colors</span>)</label>
               <input type="range" id="modal-bitplanes" min="1" max="8" value="4" step="1">
             </div>
-            <canvas id="modal-iff-preview-canvas" width="200" height="160" style="image-rendering:pixelated; display:block;"></canvas>
+            <div style="display:flex; gap:12px; align-items:flex-start;">
+              <div><label style="font-size:11px;color:#a0b0c0;">PNG</label><br><canvas id="modal-png-preview-canvas" width="200" height="160" style="image-rendering:pixelated; display:block;"></canvas></div>
+              <div><label style="font-size:11px;color:#a0b0c0;">IFF (quantized)</label><br><canvas id="modal-iff-preview-canvas" width="200" height="160" style="image-rendering:pixelated; display:block;"></canvas></div>
+            </div>
           </div>
           <div class="form-group">
             <label>Tilesheet columns</label>

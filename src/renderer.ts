@@ -1217,6 +1217,7 @@ const modalBpSlider = document.getElementById('modal-bitplanes') as HTMLInputEle
 const modalBpLabel = document.getElementById('modal-bp-label') as HTMLElement;
 const modalColorsLabel = document.getElementById('modal-colors-label') as HTMLElement;
 const modalIffPreviewRow = document.getElementById('modal-iff-preview-row')!;
+const modalPngPreviewCanvas = document.getElementById('modal-png-preview-canvas') as HTMLCanvasElement;
 const modalIffPreviewCanvas = document.getElementById('modal-iff-preview-canvas') as HTMLCanvasElement;
 
 modalBpSlider.addEventListener('input', () => {
@@ -1264,6 +1265,14 @@ function updateModalIffPreview(): void {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(tmp, 0, 0, w, h, 0, 0, dw, dh);
     modalIffPreviewCanvas.style.display = 'block';
+    // Also draw original PNG for comparison
+    modalPngPreviewCanvas.width = dw;
+    modalPngPreviewCanvas.height = dh;
+    const pngCtx = modalPngPreviewCanvas.getContext('2d')!;
+    pngCtx.clearRect(0, 0, dw, dh);
+    pngCtx.imageSmoothingEnabled = false;
+    pngCtx.drawImage(img, 0, 0, w, h, 0, 0, dw, dh);
+    modalPngPreviewCanvas.style.display = 'block';
   };
   img.src = pickedPngDataUrl;
 }
