@@ -81,6 +81,7 @@ declare const editorApi: {
     tilesheetCols: number;
     tilesheetRows: number;
     tileSize: number;
+    gridTileSize: number;
     iffData?: number[];
     convBitplanes?: number;
   }) => Promise<string | null>;
@@ -94,6 +95,7 @@ declare const editorApi: {
     tilesheetCols: number;
     tilesheetRows: number;
     tileSize: number;
+    gridTileSize: number;
     convBitplanes?: number;
   }) => Promise<boolean>;
   exportAmiga: (data: {
@@ -115,6 +117,7 @@ declare const editorApi: {
       tilesheetCols: number;
       tilesheetRows: number;
       tileSize: number;
+      gridTileSize: number;
       pngFileName: string;
     };
   } | null>;
@@ -130,6 +133,7 @@ declare const editorApi: {
       tilesheetCols: number;
       tilesheetRows: number;
       tileSize: number;
+      gridTileSize: number;
       pngFileName: string;
     };
   } | null>;
@@ -157,8 +161,10 @@ const CONFIG: EditorConfig = {
   imgH: 256,
 };
 
+function gridSheetCols(): number { return Math.max(1, Math.floor(CONFIG.imgW / gridTileSize)); }
+function gridSheetRows(): number { return Math.max(1, Math.floor(CONFIG.imgH / gridTileSize)); }
 function getMaxTiles(): number {
-  return CONFIG.tilesheetCols * CONFIG.tilesheetRows;
+  return gridSheetCols() * gridSheetRows();
 }
 
 function recalcDerived(): void {
@@ -169,10 +175,6 @@ function recalcDerived(): void {
   CONFIG.sheetH = CONFIG.tilesheetRows * CONFIG.tileSize;
 }
 
-/**
- * Recalculate tilesheetCols/tilesheetRows from image dimensions and the current tileSize.
- * Does NOT change mapCols/mapRows — those stay fixed.
- */
 function recalcTilesheetFromImage(): void {
   CONFIG.tilesheetCols = Math.max(1, Math.floor(CONFIG.imgW / CONFIG.tileSize));
   CONFIG.tilesheetRows = Math.max(1, Math.floor(CONFIG.imgH / CONFIG.tileSize));
@@ -225,7 +227,7 @@ let currentProjectPath = '';
 let currentProjectName = '— no project —';
 let currentPngFileName = '';
 let convBitplanes = 4;
-let gridTileSize = 16; // separate visual grid tile size, changed only by slider
+let gridTileSize = 16; // visual grid tile size, changed by slider, saved with project
 
 function gridDTile(): number { return gridTileSize * CONFIG.scale; }
 function gridMapCols(): number { return Math.max(1, Math.floor(mapCanvas.width / gridDTile())); }
@@ -540,7 +542,7 @@ function updateProjectUI(): void {
     : '—';
   const sheetDims = document.getElementById('tilesheet-dims')!;
   sheetDims.textContent = projectLoaded
-    ? `${CONFIG.tilesheetCols}×${CONFIG.tilesheetRows} tiles — ${CONFIG.tileSize}×${CONFIG.tileSize} px each — image ${CONFIG.imgW}×${CONFIG.imgH}px`
+    ? `${gridSheetCols()}×${gridSheetRows()} tiles — ${gridTileSize}×${gridTileSize} px each — image ${CONFIG.imgW}×${CONFIG.imgH}px`
     : '—';
 }
 
@@ -566,6 +568,7 @@ function clearEditor(): void {
   sheetHover = { col: -1, row: -1 };
   mapHover = { col: -1, row: -1 };
   activeTile = 0;
+  gridTileSize = 16;
   renderMapTabs();
   updateActiveDisplay();
   updateProjectUI();
@@ -580,6 +583,7 @@ async function createNewProject(
   iffData?: number[], bitplanes?: number
 ): Promise<boolean> {
   CONFIG.tileSize = tileSize;
+  gridTileSize = tileSize;
   CONFIG.mapCols = mapCols;
   CONFIG.mapRows = mapRows;
   CONFIG.tilesheetCols = sheetCols;
@@ -610,7 +614,7 @@ async function createNewProject(
     maps: maps.map(m => ({ ...m, map: m.map.map(row => [...row]) })),
     bits: bitsConfig.bits, tileFlags: [...tileFlags],
     tilesheetCols: CONFIG.tilesheetCols, tilesheetRows: CONFIG.tilesheetRows,
-    tileSize: CONFIG.tileSize,
+    tileSize: CONFIG.tileSize, gridTileSize,
     iffData, convBitplanes: bitplanes
   });
   if (!resultPath) { console.error('Failed to create project folder'); return false; }
@@ -621,8 +625,8 @@ async function createNewProject(
   const parentFolder = folderPath.substring(0, folderPath.lastIndexOf('/'));
   if (parentFolder) localStorage.setItem('lastProjectFolder', parentFolder);
   activeBitIndex = 0;
-  tileSizeSlider.value = String(CONFIG.tileSize);
-  tileSizeValue.textContent = String(CONFIG.tileSize);
+  tileSizeSlider.value = String(gridTileSize);
+  tileSizeValue.textContent = String(gridTileSize);
   renderMapTabs();
   renderFlagsUI();
   drawTilesheet();
@@ -641,7 +645,7 @@ async function saveProject(): Promise<void> {
     maps: maps.map(m => ({ ...m, map: m.map.map(row => [...row]) })),
     bits: bitsConfig.bits, tileFlags: [...tileFlags],
     tilesheetCols: CONFIG.tilesheetCols, tilesheetRows: CONFIG.tilesheetRows,
-    tileSize: CONFIG.tileSize,
+    tileSize: CONFIG.tileSize, gridTileSize,
     convBitplanes
   });
   if (success) { updateProjectUI(); showToast('Project saved', 'success'); }
@@ -658,13 +662,13 @@ async function loadProject(): Promise<void> {
 async function applyLoadedProject(result: { projectFolder: string; projectName: string; data: any }): Promise<void> {
   const { projectFolder, projectName, data } = result;
   const tileSize = data.tileSize || 16;
+  gridTileSize = data.gridTileSize || tileSize;
   CONFIG.tileSize = tileSize;
   CONFIG.tilesheetCols = data.tilesheetCols;
   CONFIG.tilesheetRows = data.tilesheetRows;
   recalcDerived();
   tilesCanvas.width = CONFIG.sheetW * CONFIG.scale;
   tilesCanvas.height = CONFIG.sheetH * CONFIG.scale;
-  // Get image dimensions from the loaded tilesheet
   const pngPath = projectFolder + '/' + data.pngFileName;
   const pngDataUrl = await editorApi.loadPngFile(pngPath);
   if (!pngDataUrl) { console.error('Failed to load tilesheet from project folder'); return; }
@@ -709,8 +713,8 @@ async function applyLoadedProject(result: { projectFolder: string; projectName: 
   activeBitIndex = 0;
   if (data.convBitplanes !== undefined) convBitplanes = data.convBitplanes;
 
-  tileSizeSlider.value = String(CONFIG.tileSize);
-  tileSizeValue.textContent = String(CONFIG.tileSize);
+  tileSizeSlider.value = String(gridTileSize);
+  tileSizeValue.textContent = String(gridTileSize);
 
   renderMapTabs();
   renderFlagsUI();
@@ -726,8 +730,9 @@ async function applyLoadedProject(result: { projectFolder: string; projectName: 
 // ─── DRAWING ──────────────────────────────────────────────────────────────────
 
 function tileSourceXY(tileIdx: number): { sx: number; sy: number } {
-  const sx = (tileIdx % CONFIG.tilesheetCols) * CONFIG.tileSize;
-  const sy = Math.floor(tileIdx / CONFIG.tilesheetCols) * CONFIG.tileSize;
+  const cols = gridSheetCols();
+  const sx = (tileIdx % cols) * gridTileSize;
+  const sy = Math.floor(tileIdx / cols) * gridTileSize;
   return { sx, sy };
 }
 
@@ -744,11 +749,12 @@ function drawMap(): void {
   if (!curMap) return;
   const cols = gridMapCols();
   const rows = gridMapRows();
+  const sheetCols = gridSheetCols();
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const tileIdx = curMap[r]?.[c] ?? 0;
-      const sx = (tileIdx % CONFIG.tilesheetCols) * gridTileSize;
-      const sy = Math.floor(tileIdx / CONFIG.tilesheetCols) * gridTileSize;
+      const sx = (tileIdx % sheetCols) * gridTileSize;
+      const sy = Math.floor(tileIdx / sheetCols) * gridTileSize;
       mapCtx.drawImage(tilesheet, sx, sy, gridTileSize, gridTileSize, c * d, r * d, d, d);
     }
   }
@@ -761,8 +767,9 @@ function drawMapGhost(): void {
   if (mapHover.col < 0 || mapHover.row < 0) return;
   if (!tilesheet) return;
   const d = gridDTile();
-  const sx = (activeTile % CONFIG.tilesheetCols) * gridTileSize;
-  const sy = Math.floor(activeTile / CONFIG.tilesheetCols) * gridTileSize;
+  const sheetCols = gridSheetCols();
+  const sx = (activeTile % sheetCols) * gridTileSize;
+  const sy = Math.floor(activeTile / sheetCols) * gridTileSize;
   mapCtx.globalAlpha = 0.5;
   mapCtx.drawImage(tilesheet, sx, sy, gridTileSize, gridTileSize, mapHover.col * d, mapHover.row * d, d, d);
   mapCtx.globalAlpha = 1.0;
@@ -832,8 +839,8 @@ function drawFlagDots(): void {
   const dotR = Math.max(1.5, d * 0.08);
   const pad = dotR + 1;
   const perRow = 4;
-  const cols = Math.max(1, Math.floor(CONFIG.imgW / gridTileSize));
-  const rows = Math.max(1, Math.floor(CONFIG.imgH / gridTileSize));
+  const cols = gridSheetCols();
+  const rows = gridSheetRows();
   const maxTiles = cols * rows;
   tilesCtx.save();
   for (let idx = 0; idx < maxTiles; idx++) {
@@ -885,7 +892,7 @@ function drawTilesheetGrid(): void {
 
 function drawActiveHighlight(): void {
   const d = gridDTile();
-  const cols = Math.max(1, Math.floor(CONFIG.imgW / gridTileSize));
+  const cols = gridSheetCols();
   const col = activeTile % cols;
   const row = Math.floor(activeTile / cols);
   const sx = col * d;
@@ -896,8 +903,9 @@ function drawActiveHighlight(): void {
 }
 
 function updateActiveDisplay(): void {
-  const col = activeTile % CONFIG.tilesheetCols;
-  const row = Math.floor(activeTile / CONFIG.tilesheetCols);
+  const cols = gridSheetCols();
+  const col = activeTile % cols;
+  const row = Math.floor(activeTile / cols);
   const setNames: string[] = [];
   for (let b = 0; b < TOTAL_BITS; b++) {
     if (hasBit(activeTile, b)) {
@@ -972,7 +980,7 @@ async function saveBitsConfig(): Promise<void> {
 // ─── Tile index helpers ───────────────────────────────────────────────────────
 
 function tileIndexFromCoord(col: number, row: number): number {
-  return row * CONFIG.tilesheetCols + col;
+  return row * gridSheetCols() + col;
 }
 
 function canvasCoords(e: MouseEvent, canvas: HTMLCanvasElement): CanvasPoint {
@@ -991,6 +999,8 @@ function isCellInBounds(coord: TileCoord, cols: number, rows: number): boolean {
 }
 
 function placeTileOnMap(p: CanvasPoint): void {
+  const curMap = getCurrentMap();
+  if (!curMap) return;
   const cell = mapCellFromPoint(p);
   const cols = gridMapCols();
   const rows = gridMapRows();
@@ -998,6 +1008,7 @@ function placeTileOnMap(p: CanvasPoint): void {
   const key = `${cell.row},${cell.col}`;
   if (key === lastPlaced) return;
   lastPlaced = key;
+  curMap[cell.row][cell.col] = activeTile;
   drawMap();
 }
 
@@ -1008,8 +1019,8 @@ tilesCanvas.addEventListener('mousedown', (e: MouseEvent) => {
   const d = gridDTile();
   const col = Math.floor(p.x / d);
   const row = Math.floor(p.y / d);
-  const cols = Math.max(1, Math.floor(CONFIG.imgW / gridTileSize));
-  const rows = Math.max(1, Math.floor(CONFIG.imgH / gridTileSize));
+  const cols = gridSheetCols();
+  const rows = gridSheetRows();
   if (col < 0 || col >= cols || row < 0 || row >= rows) return;
   if (e.button === 0) {
     activeTile = row * cols + col;
@@ -1030,8 +1041,8 @@ tilesCanvas.addEventListener('mousemove', (e: MouseEvent) => {
   const d = gridDTile();
   const col = Math.floor(p.x / d);
   const row = Math.floor(p.y / d);
-  const cols = Math.max(1, Math.floor(CONFIG.imgW / gridTileSize));
-  const rows = Math.max(1, Math.floor(CONFIG.imgH / gridTileSize));
+  const cols = gridSheetCols();
+  const rows = gridSheetRows();
   sheetHover = (col >= 0 && col < cols && row >= 0 && row < rows) ? { col, row } : { col: -1, row: -1 };
   drawTilesheet();
 });
@@ -1065,7 +1076,6 @@ tileSizeSlider.addEventListener('input', () => {
   gridTileSize = newTileSize;
   tileSizeValue.textContent = String(newTileSize);
 
-  // Redraw both canvases with the new grid size
   drawTilesheet();
   drawMap();
 });
@@ -1317,7 +1327,6 @@ let pickedPngFileName = '';
 let pickedFolderPath: string | null = null;
 let modalIffBytes: Uint8Array | null = null;
 let modalBp = 4;
-let projectModalMode: 'create' | 'settings' = 'create';
 let pickedImgWidth = 320;
 let pickedImgHeight = 256;
 
@@ -1394,19 +1403,10 @@ document.getElementById('btn-pick-png')!.addEventListener('click', async () => {
   pickedPngDataUrl = result.dataUrl;
   pickedPngFileName = result.fileName;
   document.getElementById('png-file-name')!.textContent = result.fileName;
-  // Get image dimensions
   const img = new Image();
   img.onload = () => {
     pickedImgWidth = img.width;
     pickedImgHeight = img.height;
-    // Auto-calculate tile defaults based on image
-    const defaultTileSize = 16;
-    const sheetCols = Math.max(1, Math.floor(img.width / defaultTileSize));
-    const sheetRows = Math.max(1, Math.floor(img.height / defaultTileSize));
-    (document.getElementById('input-sheet-cols') as HTMLInputElement).value = String(sheetCols);
-    (document.getElementById('input-sheet-rows') as HTMLInputElement).value = String(sheetRows);
-    (document.getElementById('input-map-cols') as HTMLInputElement).value = String(sheetCols);
-    (document.getElementById('input-map-rows') as HTMLInputElement).value = String(sheetRows);
   };
   img.src = result.dataUrl;
   modalIffPreviewRow.style.display = 'block';
@@ -1428,11 +1428,11 @@ document.getElementById('btn-modal-create')!.addEventListener('click', async () 
   if (!pickedFolderPath) { const btn = document.getElementById('btn-pick-folder')!; btn.style.borderColor = '#e94560'; setTimeout(() => { btn.style.borderColor = ''; }, 1000); return; }
   const projectName = (document.getElementById('input-project-name') as HTMLInputElement).value.trim() || 'MyProject';
   const firstMapName = (document.getElementById('input-map-name') as HTMLInputElement).value.trim() || 'Level 1';
-  const sheetCols = parseInt((document.getElementById('input-sheet-cols') as HTMLInputElement).value) || 20;
-  const sheetRows = parseInt((document.getElementById('input-sheet-rows') as HTMLInputElement).value) || 20;
-  const mapCols = parseInt((document.getElementById('input-map-cols') as HTMLInputElement).value) || 20;
-  const mapRows = parseInt((document.getElementById('input-map-rows') as HTMLInputElement).value) || 16;
-  const tileSize = 16; // default for new projects, user can change via slider
+  const tileSize = 16;
+  const sheetCols = Math.max(1, Math.floor(pickedImgWidth / tileSize));
+  const sheetRows = Math.max(1, Math.floor(pickedImgHeight / tileSize));
+  const mapCols = 20; // default Amiga: 320/16=20
+  const mapRows = 16; // default Amiga: 256/16=16
   const maxTiles = sheetCols * sheetRows;
   tileFlags = new Array(maxTiles).fill(0);
   document.getElementById('new-project-overlay')!.classList.add('hidden');
@@ -1572,10 +1572,6 @@ function handleMenuAction(action: string): void {
       document.getElementById('png-file-name')!.textContent = 'no file selected';
       document.getElementById('folder-path')!.textContent = 'no folder selected';
       (document.getElementById('input-project-name') as HTMLInputElement).value = 'MyProject';
-      (document.getElementById('input-sheet-cols') as HTMLInputElement).value = '20';
-      (document.getElementById('input-sheet-rows') as HTMLInputElement).value = '20';
-      (document.getElementById('input-map-cols') as HTMLInputElement).value = '20';
-      (document.getElementById('input-map-rows') as HTMLInputElement).value = '16';
       document.getElementById('new-project-overlay')!.classList.remove('hidden');
       break;
     case 'load':
@@ -1610,37 +1606,23 @@ function handleMenuAction(action: string): void {
 
 function showProjectSettings(): void {
   switchTab('level-editor');
-  projectModalMode = 'settings';
   const titleEl = document.getElementById('new-project-title')!;
   titleEl.textContent = 'Project Settings';
   document.getElementById('btn-modal-create')!.classList.add('hidden');
   document.getElementById('btn-modal-save-settings')!.classList.remove('hidden');
   (document.getElementById('input-project-name') as HTMLInputElement).value = currentProjectName;
-  (document.getElementById('input-sheet-cols') as HTMLInputElement).value = String(CONFIG.tilesheetCols);
-  (document.getElementById('input-sheet-rows') as HTMLInputElement).value = String(CONFIG.tilesheetRows);
-  (document.getElementById('input-map-cols') as HTMLInputElement).value = String(CONFIG.mapCols);
-  (document.getElementById('input-map-rows') as HTMLInputElement).value = String(CONFIG.mapRows);
   modalBp = convBitplanes;
   modalBpSlider.value = String(convBitplanes);
   modalBpLabel.textContent = String(convBitplanes);
   modalColorsLabel.textContent = `${1 << convBitplanes} color${convBitplanes !== 1 ? 's' : ''}`;
-  // load current tilesheet png for preview
   if (tilesheet) { pickedPngDataUrl = tilesheet.src; pickedPngFileName = currentPngFileName; document.getElementById('png-file-name')!.textContent = currentPngFileName; document.getElementById('folder-path')!.textContent = currentProjectPath; pickedImgWidth = CONFIG.imgW; pickedImgHeight = CONFIG.imgH; modalIffPreviewRow.style.display = 'block'; updateModalIffPreview(); }
   document.getElementById('new-project-overlay')!.classList.remove('hidden');
 }
 
 document.getElementById('btn-modal-save-settings')!.addEventListener('click', async () => {
-  const newSheetCols = parseInt((document.getElementById('input-sheet-cols') as HTMLInputElement).value) || 20;
-  const newSheetRows = parseInt((document.getElementById('input-sheet-rows') as HTMLInputElement).value) || 20;
-  const newMapCols = parseInt((document.getElementById('input-map-cols') as HTMLInputElement).value) || 20;
-  const newMapRows = parseInt((document.getElementById('input-map-rows') as HTMLInputElement).value) || 16;
   const newName = (document.getElementById('input-project-name') as HTMLInputElement).value.trim() || currentProjectName;
-  CONFIG.tilesheetCols = newSheetCols; CONFIG.tilesheetRows = newSheetRows;
-  CONFIG.mapCols = newMapCols; CONFIG.mapRows = newMapRows;
-  recalcDerived(); convBitplanes = modalBp; currentProjectName = newName;
-  mapCanvas.width = CONFIG.mapW * CONFIG.scale; mapCanvas.height = CONFIG.mapH * CONFIG.scale;
-  tilesCanvas.width = CONFIG.sheetW * CONFIG.scale; tilesCanvas.height = CONFIG.sheetH * CONFIG.scale;
-  ensureTileFlagsSize();
+  convBitplanes = modalBp; currentProjectName = newName;
+  recalcDerived();
   drawTilesheet(); drawMap(); updateProjectUI();
   document.getElementById('new-project-overlay')!.classList.add('hidden');
   saveProject();
@@ -1659,8 +1641,8 @@ async function showLoadProjectBrowser(): Promise<void> {
 let convPngDataUrl: string | null = null;
 let convPngFileName: string = '';
 let convIffBytes: Uint8Array | null = null;
-let convPalette: Uint8Array | null = null; // RGB triplets
-let convIndexMap: Uint8Array | null = null; // per-pixel palette index
+let convPalette: Uint8Array | null = null;
+let convIndexMap: Uint8Array | null = null;
 let convImgWidth = 0;
 let convImgHeight = 0;
 
@@ -1723,11 +1705,8 @@ function reconvert(): void {
   convPalette = result.palette;
   convIndexMap = result.indexMap;
 
-  // Draw IFF preview using palette
   drawIffPreview(convPalette, convIndexMap);
-  // Draw palette swatches
   drawPaletteSwatches(convPalette, bp);
-  // Update info
   convIffSize.textContent = formatSize(convIffBytes.length);
   convIffColors.textContent = `${1 << bp} colors`;
   convPaletteDiv.style.display = 'block';
@@ -1768,16 +1747,12 @@ function drawPaletteSwatches(palette: Uint8Array, nPlanes: number): void {
   convPaletteSwatches.innerHTML = html;
 }
 
-// ─── Color quantization: Frequency-based (uses exact image colors) ───────
-
 function frequencyQuantize(rgb: Uint8ClampedArray, maxColors: number): { palette: Uint8Array; indexMap: Uint8Array } {
   const numPixels = rgb.length / 4;
   if (numPixels === 0 || maxColors === 0) {
     return { palette: new Uint8Array(0), indexMap: new Uint8Array(0) };
   }
 
-  // Count frequency of each unique RGB color
-  // Key = packed 24-bit integer: (R << 16) | (G << 8) | B
   const colorFreq = new Map<number, number>();
   const colorRGB = new Map<number, [number, number, number]>();
   for (let i = 0; i < numPixels; i++) {
@@ -1788,14 +1763,9 @@ function frequencyQuantize(rgb: Uint8ClampedArray, maxColors: number): { palette
     if (!colorRGB.has(key)) colorRGB.set(key, [r, g, b]);
   }
 
-  // Sort colors by frequency (most common first)
   const sorted = [...colorFreq.entries()].sort((a, b) => b[1] - a[1]);
-
-  // Take top N colors — but never exceed the actual count
   const paletteSize = Math.min(sorted.length, maxColors);
   const topColors = sorted.slice(0, paletteSize);
-
-  // Build color → index lookup map
   const colorToIndex = new Map<number, number>();
   const palette = new Uint8Array(paletteSize * 3);
   for (let i = 0; i < paletteSize; i++) {
@@ -1807,7 +1777,6 @@ function frequencyQuantize(rgb: Uint8ClampedArray, maxColors: number): { palette
     colorToIndex.set(key, i);
   }
 
-  // Build index map: exact match for palette colors, nearest-neighbor for others
   const indexMap = new Uint8Array(numPixels);
   for (let i = 0; i < numPixels; i++) {
     const off = i * 4;
@@ -1818,7 +1787,6 @@ function frequencyQuantize(rgb: Uint8ClampedArray, maxColors: number): { palette
       indexMap[i] = exact;
       continue;
     }
-    // Nearest-neighbor fallback (only needed when #unique > maxColors)
     let bestDist = Infinity;
     let bestIdx = 0;
     for (let c = 0; c < paletteSize; c++) {
@@ -1829,11 +1797,8 @@ function frequencyQuantize(rgb: Uint8ClampedArray, maxColors: number): { palette
     }
     indexMap[i] = bestIdx;
   }
-
   return { palette, indexMap };
 }
-
-// ─── Multi-bitplane IFF encoder ───────────────────────────────────────────
 
 function pngToIffMulti(img: HTMLImageElement, nPlanes: number): { iff: Uint8Array; palette: Uint8Array; indexMap: Uint8Array } {
   const w = img.width;
@@ -1841,21 +1806,18 @@ function pngToIffMulti(img: HTMLImageElement, nPlanes: number): { iff: Uint8Arra
   const bytesPerRow = ((w + 15) >> 4) << 1;
   const maxColors = 1 << nPlanes;
 
-  // Read RGBA pixels
   const tmp = document.createElement('canvas');
   tmp.width = w;
   tmp.height = h;
   const ctx = tmp.getContext('2d')!;
   ctx.drawImage(img, 0, 0);
   const imageData = ctx.getImageData(0, 0, w, h);
-  const rgb = imageData.data; // RGBA
+  const rgb = imageData.data;
 
-  // Quantize
   const quant = frequencyQuantize(rgb, maxColors);
   const palette = quant.palette;
   const indexMap = quant.indexMap;
 
-  // Build interleaved BODY: for each row, for each plane, pack bits
   const body = new Uint8Array(h * nPlanes * bytesPerRow);
   for (let y = 0; y < h; y++) {
     for (let plane = 0; plane < nPlanes; plane++) {
@@ -1871,10 +1833,9 @@ function pngToIffMulti(img: HTMLImageElement, nPlanes: number): { iff: Uint8Arra
     }
   }
 
-  // Build CMAP: 2^nPlanes entries, 3 bytes each (RGB). Pad with black if needed.
   const cmapLen = maxColors * 3;
   const cmap = new Uint8Array(cmapLen);
-  cmap.set(palette); // may be shorter if fewer colors; rest stays 0 (black)
+  cmap.set(palette);
 
   function iffChunk(type: string, data: Uint8Array): Uint8Array {
     const out = new Uint8Array(8 + data.length);
@@ -1887,16 +1848,16 @@ function pngToIffMulti(img: HTMLImageElement, nPlanes: number): { iff: Uint8Arra
   const bmhd = new Uint8Array(20);
   putU16BE(bmhd, 0, w);
   putU16BE(bmhd, 2, h);
-  putU16BE(bmhd, 4, 0); // x origin
-  putU16BE(bmhd, 6, 0); // y origin
+  putU16BE(bmhd, 4, 0);
+  putU16BE(bmhd, 6, 0);
   bmhd[8] = nPlanes;
-  bmhd[9] = 0;  // masking = none
-  bmhd[10] = 0; // compression = none
-  bmhd[11] = 0; // pad
-  putU16BE(bmhd, 12, 0); // transparent color
-  bmhd[14] = 44; bmhd[15] = 52; // aspect (PAL default)
-  putU16BE(bmhd, 16, w); // page width
-  putU16BE(bmhd, 18, h); // page height
+  bmhd[9] = 0;
+  bmhd[10] = 0;
+  bmhd[11] = 0;
+  putU16BE(bmhd, 12, 0);
+  bmhd[14] = 44; bmhd[15] = 52;
+  putU16BE(bmhd, 16, w);
+  putU16BE(bmhd, 18, h);
 
   const bmhdChunk = iffChunk('BMHD', bmhd);
   const cmapChunk = iffChunk('CMAP', cmap);
@@ -1904,13 +1865,13 @@ function pngToIffMulti(img: HTMLImageElement, nPlanes: number): { iff: Uint8Arra
 
   const ilbmInner = new Uint8Array(4 + bmhdChunk.length + cmapChunk.length + bodyChunk.length);
   let p = 0;
-  ilbmInner.set([0x49, 0x4C, 0x42, 0x4D], p); p += 4; // "ILBM"
+  ilbmInner.set([0x49, 0x4C, 0x42, 0x4D], p); p += 4;
   ilbmInner.set(bmhdChunk, p); p += bmhdChunk.length;
   ilbmInner.set(cmapChunk, p); p += cmapChunk.length;
   ilbmInner.set(bodyChunk, p);
 
   const form = new Uint8Array(8 + ilbmInner.length);
-  form.set([0x46, 0x4F, 0x52, 0x4D], 0); // "FORM"
+  form.set([0x46, 0x4F, 0x52, 0x4D], 0);
   putU32BE(form, 4, ilbmInner.length);
   form.set(ilbmInner, 8);
 
