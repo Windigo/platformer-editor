@@ -1,7 +1,7 @@
 {
-  "name": "platformer-editor",
+  "name": "retro-map-editor",
   "version": "1.0.0",
-  "description": "Amiga Platformer Map Editor for AmiBlitz3",
+  "description": "Retro Map Editor for AmiBlitz3",
   "main": "main.js",
   "scripts": {
     "start": "tsc && electron .",
@@ -11,8 +11,12 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@types/jszip": "^3.4.0",
     "@types/node": "^26.0.0",
-    "electron": "^28.0.0",
+    "electron": "^42.5.0",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1"
   }
 }

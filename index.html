@@ -3,31 +3,197 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Platformer Editor — AmiBlitz3 Map Tool</title>
+  <title>RetroMapEditor — AmiBlitz3 Map Tool</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- TOP MENU -->
+  <div id="top-menu">
+    <button id="menu-new" class="menu-btn">New Project</button>
+    <button id="menu-load" class="menu-btn">Load Project</button>
+    <button id="menu-save" class="menu-btn">Save Project</button>
+    <button id="menu-export" class="menu-btn">Export Amiga</button>
+    <button id="menu-preview" class="menu-btn" disabled>Preview Export</button>
+    <span id="project-name" class="project-name clickable" title="Click to rename project">— no project —</span>
+    <input id="project-name-input" class="project-name-input hidden" type="text">
+  </div>
+
   <div id="app">
     <!-- LEFT PANEL: Map editor -->
     <div id="editor-panel">
-      <h2 class="panel-title">Map Editor <span class="dim">20×16 — 320×256 px (Amiga)</span></h2>
+      <h2 class="panel-title">Map Editor <span class="dim" id="map-dims">—</span></h2>
       <div id="map-controls">
-        <button id="btn-clear">Clear All</button>
-        <button id="btn-fill">Fill (Active Tile)</button>
-        <button id="btn-export">Export Map Data</button>
       </div>
       <canvas id="map-canvas"></canvas>
       <div id="tile-info">Active tile: <span id="active-tile-id">0</span> (0,0)</div>
+      <div id="bits-map-toggle">
+        <label class="switch">
+          <input type="checkbox" id="chk-bits-on-map">
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">Show bits on map</span>
+      </div>
     </div>
 
-    <!-- RIGHT PANEL: Tile selector -->
+    <!-- MIDDLE PANEL: Level list (vertical tabs) -->
+    <div id="levels-panel">
+      <h2 class="panel-title">Levels</h2>
+      <div id="map-tabs" class="level-list"></div>
+    </div>
+
+    <!-- RIGHT PANEL: Tile selector + Flags -->
     <div id="tiles-panel">
-      <h2 class="panel-title">Tile Selector <span class="dim">20×20 tiles — 16×16 px each</span></h2>
-      <canvas id="tiles-canvas"></canvas>
-      <p class="hint">Click a tile on the right to select it, then click/drag on the left to place it on the map.</p>
+      <h2 class="panel-title">Tile Selector <span class="dim" id="tilesheet-dims">—</span></h2>
+      <div id="tiles-row">
+        <canvas id="tiles-canvas"></canvas>
+        <div id="flags-column">
+          <!-- 16 fixed flag rows rendered dynamically -->
+        </div>
+      </div>
+      <p class="hint">Left‑click a tile to select it. Right‑click a tile to toggle the active flag.<br>Click a flag row to select it as active. Click/drag on the map to place tiles.</p>
     </div>
   </div>
 
+  <!-- AMIGA EXPORT PREVIEW MODAL -->
+  <div id="amiga-preview-overlay" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <h2>Amiga Export Preview</h2>
+      <div class="modal-body">
+        <div class="preview-visuals">
+          <div class="preview-visual-block">
+            <span class="preview-filename">tiles.iff</span>
+            <span id="iff-info" class="preview-filesize">—</span>
+            <div class="iff-hover-wrap">
+              <span class="iff-hover-trigger">hover to preview</span>
+              <div class="iff-hover-popup">
+                <canvas id="iff-preview-canvas" class="preview-thumb"></canvas>
+              </div>
+            </div>
+          </div>
+          <div class="preview-visual-block">
+            <span class="preview-filename">map.bin</span>
+            <span id="map-info" class="preview-filesize">—</span>
+          </div>
+        </div>
+        <div class="preview-file-header">
+          <span class="preview-filename">LoadMap.ab3</span>
+          <span class="preview-filesize">AmiBlitz3 source</span>
+        </div>
+        <textarea id="ab3-preview" class="preview-code" readonly spellcheck="false"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-preview-cancel" class="btn-secondary">Cancel</button>
+        <button id="btn-preview-export" class="btn-primary">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NEW PROJECT MODAL -->
+  <div id="new-project-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>New Project</h2>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Project name</label>
+          <input type="text" id="input-project-name" value="MyProject" placeholder="MyProject">
+        </div>
+        <div class="form-group">
+          <label>Initial map name</label>
+          <input type="text" id="input-map-name" value="Level 1" placeholder="Level 1">
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <div class="file-picker">
+            <button id="btn-pick-folder">Browse…</button>
+            <span id="folder-path" class="file-name">no folder selected</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Tilesheet PNG</label>
+          <div class="file-picker">
+            <button id="btn-pick-png">Select PNG…</button>
+            <span id="png-file-name" class="file-name">no file selected</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Tilesheet columns</label>
+          <input type="number" id="input-sheet-cols" value="20" min="1" max="99">
+        </div>
+        <div class="form-group">
+          <label>Tilesheet rows</label>
+          <input type="number" id="input-sheet-rows" value="20" min="1" max="99">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Map width (tiles)</label>
+            <input type="number" id="input-map-cols" value="20" min="1" max="99">
+          </div>
+          <div class="form-group">
+            <label>Map height (tiles)</label>
+            <input type="number" id="input-map-rows" value="16" min="1" max="99">
+          </div>
+        </div>
+        <p class="hint">Amiga standard: 20×16 = 320×256 px (16×16 tiles)</p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-modal-cancel" class="btn-secondary">Cancel</button>
+        <button id="btn-modal-create" class="btn-primary">Create Project</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RENAME MAP MODAL -->
+  <div id="rename-map-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>Rename Map</h2>
+      <div class="modal-body">
+        <div class="form-group">
+          <label id="rename-map-label">Map name</label>
+          <input type="text" id="input-rename-map" value="" placeholder="Map name">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-rename-cancel" class="btn-secondary">Cancel</button>
+        <button id="btn-rename-confirm" class="btn-primary">Rename</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DELETE MAP CONFIRM MODAL -->
+  <div id="delete-map-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>Delete Map</h2>
+      <div class="modal-body">
+        <p id="delete-map-message" style="color:#a0b0c0; font-size:14px;">Are you sure?</p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-delete-cancel" class="btn-secondary">Cancel</button>
+        <button id="btn-delete-confirm" class="btn-primary" style="background:#e94560; border-color:#e94560;">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FILE BROWSER MODAL -->
+  <div id="file-browser-overlay" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <h2>Load Project</h2>
+      <div class="modal-body">
+        <div class="fb-location">
+          <span class="fb-path" id="fb-current-path">/</span>
+        </div>
+        <div class="fb-list" id="fb-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-fb-cancel" class="btn-secondary">Cancel</button>
+        <button id="btn-fb-open" class="btn-primary" disabled>Open</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST / SNACKBAR -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="assets/jszip.min.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

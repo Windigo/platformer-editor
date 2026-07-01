@@ -1,3 +1,9 @@
 node_modules/
 dist/
 *.js.map
+main.js
+main.js.map
+preload.js
+preload.js.map
+renderer.js
+renderer.js.map
