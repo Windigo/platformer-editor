@@ -1,153 +1,135 @@
-# RetroMapEditor
+# RetroMap Editor
 
-A desktop tile-map editor for creating 2D retro game levels targeting the **Commodore Amiga**, built with **Electron** and **TypeScript**. Designed to work with **AmiBlitz3** (Blitz Basic), it produces a complete export package (IFF tilesheet, binary map, and AmiBlitz3 loader source).
-
----
+A desktop tilemap editor for creating retro game maps, with Amiga IFF/ILBM export and AmiBlitz3 code generation. Built with Electron + TypeScript.
 
 ## Features
 
-### Project-based workflow
-- **New Project** — Create a project folder with a configurable name and location. Select your PNG tilesheet, set tilesheet dimensions (cols × rows), map dimensions, and an initial map name.
-- **Save Project** — Saves the current state (all maps, tilesheet reference, bit flags, tile definitions) into a `.project` file inside the project folder. The original PNG tilesheet is also copied there.
-- **Load Project** — Opens an in‑editor file browser showing `.project` files. Double‑click or select + Open to restore a project with all its maps.
-
-### Multi-Map / Level Management
-- **Multiple levels** per project — each map has its own name, tile grid, and dimensions.
-- **Level list** — a vertical panel between the map editor and tile selector shows all levels.
-- **Add maps** — click the **+** button at the bottom of the level list to add a new level.
-- **Rename maps** — click the currently active level's name to open the rename dialog.
-- **Delete maps** — click the **×** button on a level to delete it (the last map cannot be deleted).
-- **Reorder maps** — drag and drop a level tab up or down in the list to reorder. Other tabs slide apart to show the drop position.
-
-### Tile Map Editing
-- **Map Canvas** — Configurable grid size (default 20×16 = 320×256 px, matching the classic Amiga PAL low‑resolution screen). Each map in a project can have its own dimensions.
-- **Tile Selector** — Pick tiles from the loaded tilesheet. Selected tile is highlighted with a red outline.
-- **Ghost Preview** — Hover over the map to see a semi‑transparent preview of the active tile with a gold outline.
-- **Paint & Drag** — Click and drag on the map to place tiles.
-- **Grid Overlays** — Grid lines on both the map and tilesheet canvases.
-
-### Bit Flags (BTST)
-- **16 flags** per tile, each with a configurable name and colour.
-- **Flag column** on the right — click a flag to make it active, edit its name or colour inline.
-- **Right‑click** a tile on the tilesheet to toggle the active flag on that tile.
-- **Show bits on map** toggle — overlay coloured dots on the map to visualise which flags are set per tile.
-
-### Amiga Export
-- **Preview** all generated files before exporting:
-  - **tiles.iff** — 1‑bitplane IFF/ILBM file of the tilesheet (2 colours, black + foreground). Hover to see a rendered thumbnail.
-  - **map.bin** — Binary map data (exported but **not yet used** by the loader; map data is currently embedded in the `.ab3` source as `Data.w` statements).
-  - **LoadMap.ab3** — AmiBlitz3 source that loads the tilesheet and renders the map using `GetaShape` + `Blit`.
-- Click **Export** to write the files into the `amiga/` subfolder.
-- A **Preview Export** button becomes active after the first successful export.
-- **Amiga display**: 320×256 PAL, 2 bitplanes, `Slice 0,44,2` copper list setup.
-
-### Loading in AmiBlitz3
-The generated `LoadMap.ab3` embeds all map data as `Data.w` statements and loads them at startup with `Restore`/`Read`:
-
-```basic
-Dim tilemap.w(mapW * mapH)
-Dim tileFlags.w(maxTiles)
-
-Restore MapData
-For i = 0 To mapW * mapH - 1
-  Read tmp.w
-  tilemap(i) = tmp
-Next i
-
-Restore FlagData
-For i = 0 To maxTiles - 1
-  Read tmp.w
-  tileFlags(i) = tmp
-Next i
-```
-
-Tiles are rendered by grabbing shapes from the tilesheet bitmap and blitting them to the screen bitmap:
-
-```basic
-For y = 0 To mapH - 1
-  For x = 0 To mapW - 1
-    tile  = tilemap(y * mapW + x)
-    srcX  = (tile MOD tilesheetCols) * 16
-    srcY  = tile / tilesheetCols
-    srcY  = srcY * 16
-    dstX  = x * 16
-    dstY  = y * 16
-    Use BitMap 0
-    GetaShape 0, srcX, srcY, 16, 16
-    Use BitMap 1
-    Blit 0, dstX, dstY
-  Next
-Next
-```
-
-> **Note**: The `map.bin` file is exported as a binary alternative but is not yet consumed by the AB3 loader. Future versions may switch to loading from `map.bin` for smaller source files.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Runtime | [Electron](https://www.electronjs.org/) |
-| Language | [TypeScript](https://www.typescriptlang.org/) 5.9 |
-| Rendering | HTML5 Canvas |
-| Styling | CSS |
-
----
-
-## Prerequisites
-
-- [Node.js](https://nodejs.org/) (v18 or later recommended)
-- npm (included with Node.js)
-
-## Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/Windigo/retro-map-editor.git
-cd retro-map-editor
-
-# Install dependencies
-npm install
-```
-
-## Usage
-
-### Run the editor
-
-```bash
-npm start
-```
-
-This compiles TypeScript and launches the Electron application.
-
-### Compile TypeScript only
-
-```bash
-npm run compile
-```
-
----
+- **Tile-based map editor** — place tiles from a PNG tilesheet onto a grid-based map canvas
+- **Multiple maps per project** — create, rename, reorder, and delete map tabs within a single project
+- **Configurable tile size** — adjust the visual tile grid via a slider (8–64 px) without changing the original image
+- **Multi-bitplane IFF export** — select 1–8 bitplanes (2–256 colors), tilesheet is color-quantized and exported as standard ILBM
+- **Per-tile bit flags** — 16 configurable flag bits per tile with named labels and color-coded dots on the map
+- **AmiBlitz3 source generation** — auto-generates a `.ab3` source file that loads the tilesheet, tilemap, and flag data using the AmiBlitz3 BASIC dialect
+- **Map binary export** — exports map data and flags as a compact `.bin` file with a simple header (`AB3M` magic)
+- **PNG ↔ IFF converter tab** — load any PNG, quantize to a chosen bit depth, preview palette and converted image, and save as `.iff`/`.ilbm`
+- **Project save/load** — projects are saved as a `.project` JSON file alongside the PNG tilesheet, with IFF stored at project creation
+- **Custom file browser** — built-in file browser for opening `.project` files without OS dialogs
+- **Fullscreen editor** — resizable window with a clean dark UI
 
 ## Project Structure
 
 ```
 retro-map-editor/
-├── assets/                  # Static assets (tilesheets, JSZip)
-│   └── monochrome_tilemap_packed.png
+├── index.html          # Main window HTML
+├── style.css           # UI styles
 ├── src/
-│   ├── main.ts              # Electron main process (IPC handlers, file I/O)
-│   ├── preload.ts           # Preload script (context bridge)
-│   └── renderer.ts          # Canvas editor, UI, multi-map & export logic
-├── index.html               # Editor HTML shell (modals, panels)
-├── style.css                # Editor styles (incl. level list & drag indicators)
-├── package.json             # Project config & dependencies
-├── tsconfig.json            # TypeScript configuration
-└── README.md
+│   ├── main.ts         # Electron main process (IPC handlers, file I/O)
+│   ├── preload.ts      # Context bridge API exposed to renderer
+│   └── renderer.ts     # All editor logic (canvas drawing, IFF build, UI)
+├── assets/
+│   └── jszip.min.js    # JSZip (loaded via script tag)
+├── package.json
+└── tsconfig.json
 ```
 
----
+## Getting Started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (v18+)
+- npm
+
+### Install & Run
+
+```bash
+npm install
+npm run build    # compile TypeScript
+npm start        # launch the Electron app
+```
+
+Or use `npm run dev` to watch TypeScript and restart the app automatically.
+
+## Usage
+
+### Creating a New Project
+
+1. **File → New Project** (or Ctrl+N)
+2. **Pick a PNG tilesheet** — your tile graphics laid out in a grid
+3. **Choose a target folder** — where the project will be saved
+4. **Set bitplanes** — slider (1–8) determines how many colors the tilesheet IFF will have
+5. Enter a project name and first map name, then click **Create Project**
+
+The editor creates a folder containing:
+- `yourfile.png` — the tilesheet image
+- `yourfile.iff` — the quantized IFF/ILBM (generated at project creation)
+- `YourProject.project` — JSON project file with maps, flags, and settings
+
+### Editing
+
+- **Left-click** on the tilesheet to select a tile
+- **Left-click/drag** on the map canvas to place tiles
+- **Right-click** a tile on the tilesheet to toggle the current flag bit on/off
+- **Right-click** on the map canvas to zoom/pan (context menu disabled)
+- **Mousewheel** to zoom the map view
+
+### Tile Size Slider
+
+The **Tile Size** slider in the toolbar changes the visual grid size. This does **not** modify the original image — it only changes how the grid overlays it. The slider value is saved with the project and used by the Amiga export (AB3 code, tile coordinate math).
+
+### Bit Flags
+
+16 flag bits are available per tile. In the **Flags** panel (right sidebar):
+- Click a row to select the active bit
+- Enter a **name** to label the flag
+- Pick a **color** for the dot indicator
+- Check **Show bits on map** to overlay colored dots on placed tiles
+
+### Amiga Export
+
+**File → Export Amiga** generates three files in the `amiga/` subfolder of your project:
+
+| File | Description |
+|------|-------------|
+| `tiles.iff` | Multi-bitplane ILBM of the full tilesheet image |
+| `map.bin` | Binary tilemap + flag data (`AB3M` header format) |
+| `LoadMap.ab3` | AmiBlitz3 source code to load & render the map |
+
+The AB3 code creates two bitmaps, loads the IFF tilesheet, reads tilemap/flag data, and renders the map using `GetaShape`/`Blit` per tile.
+
+### PNG → IFF Converter
+
+The **PNG ↔ IFF** tab lets you convert any PNG to IFF/ILBM independently:
+1. Pick a PNG file
+2. Adjust the bitplanes slider
+3. Preview the color-quantized result and palette
+4. Click **Convert & Save** to write the IFF file
+
+### Project Settings
+
+**File → Settings** lets you change the project name and bitplane count after creation. The IFF is **not** regenerated from settings changes — create a new project or use the converter tab if you need a new IFF.
+
+## Map Binary Format (map.bin)
+
+```
+Offset  Size  Description
+0       4     Magic "AB3M"
+4       2     Version (1)
+6       2     Map columns
+8       2     Map rows
+10      2     Number of tiles in tilesheet
+12      N*2   Tile indices (row-major, uint16 BE)
+...     M*2   Tile flags (uint16 BE per tilesheet tile)
+```
+
+## IFF/ILBM Format
+
+Exported IFF files use standard ILBM with:
+- **BMHD** chunk — image dimensions, bitplane depth (1–8)
+- **CMAP** chunk — palette (3 bytes per color, 2^n entries)
+- **BODY** chunk — interleaved bitplane data (plane-by-plane per scanline)
+
+Compression is not used (uncompressed BODY). Amiga `camg` in BMHD is set to 0 (no special mode bits).
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+MIT
