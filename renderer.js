@@ -995,8 +995,10 @@ function buildMapBinary() {
     if (!curMap)
         return new Uint8Array(0);
     const numTiles = getMaxTiles();
+    const mCols = gridMapCols();
+    const mRows = gridMapRows();
     const headerSize = 12;
-    const gridSize = CONFIG.mapCols * CONFIG.mapRows * 2;
+    const gridSize = mCols * mRows * 2;
     const flagsSize = numTiles * 2;
     const totalSize = headerSize + gridSize + flagsSize;
     const buf = new Uint8Array(totalSize);
@@ -1005,12 +1007,12 @@ function buildMapBinary() {
     buf[2] = 0x33;
     buf[3] = 0x4D;
     putU16BE(buf, 4, 1);
-    putU16BE(buf, 6, CONFIG.mapCols);
-    putU16BE(buf, 8, CONFIG.mapRows);
+    putU16BE(buf, 6, mCols);
+    putU16BE(buf, 8, mRows);
     putU16BE(buf, 10, numTiles);
     let off = headerSize;
-    for (let r = 0; r < CONFIG.mapRows; r++) {
-        for (let c = 0; c < CONFIG.mapCols; c++) {
+    for (let r = 0; r < mRows; r++) {
+        for (let c = 0; c < mCols; c++) {
             putU16BE(buf, off, curMap[r]?.[c] ?? 0);
             off += 2;
         }
@@ -1024,29 +1026,42 @@ function buildMapBinary() {
 function buildIffTilesheet() {
     if (!tilesheet)
         throw new Error('No tilesheet loaded');
-    const w = CONFIG.sheetW;
-    const h = CONFIG.sheetH;
+    const w = CONFIG.imgW;
+    const h = CONFIG.imgH;
+    const nPlanes = convBitplanes;
+    const maxColors = 1 << nPlanes;
     const bytesPerRow = ((w + 15) >> 4) << 1;
+    // Get pixel data from the tilesheet image
     const tmp = document.createElement('canvas');
     tmp.width = w;
     tmp.height = h;
     const ctx = tmp.getContext('2d');
-    ctx.drawImage(tilesheet, 0, 0, w, h, 0, 0, w, h);
-    const imgData = ctx.getImageData(0, 0, w, h);
-    const pixels = imgData.data;
-    const body = new Uint8Array(h * bytesPerRow);
+    ctx.drawImage(tilesheet, 0, 0, w, h);
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const rgb = imageData.data;
+    // Color-quantize to palette
+    const quant = frequencyQuantize(rgb, maxColors);
+    const palette = quant.palette;
+    const indexMap = quant.indexMap;
+    // Build multi-bitplane body (interleaved: plane-by-plane per row)
+    const body = new Uint8Array(h * nPlanes * bytesPerRow);
     for (let y = 0; y < h; y++) {
-        const rowOff = y * bytesPerRow;
-        for (let x = 0; x < w; x++) {
-            const pxOff = (y * w + x) * 4;
-            const r = pixels[pxOff], g = pixels[pxOff + 1], b = pixels[pxOff + 2];
-            if (r > 127 || g > 127 || b > 127) {
-                const byteIdx = x >> 3;
-                const bitIdx = 7 - (x & 7);
-                body[rowOff + byteIdx] |= (1 << bitIdx);
+        for (let plane = 0; plane < nPlanes; plane++) {
+            const planeRowOff = (y * nPlanes + plane) * bytesPerRow;
+            for (let x = 0; x < w; x++) {
+                const idx = indexMap[y * w + x];
+                if (idx & (1 << plane)) {
+                    const byteIdx = x >> 3;
+                    const bitIdx = 7 - (x & 7);
+                    body[planeRowOff + byteIdx] |= (1 << bitIdx);
+                }
             }
         }
     }
+    // Build CMAP chunk
+    const cmapLen = maxColors * 3;
+    const cmap = new Uint8Array(cmapLen);
+    cmap.set(palette);
     function iffChunk(type, data) {
         const out = new Uint8Array(8 + data.length);
         for (let i = 0; i < 4; i++)
@@ -1060,7 +1075,7 @@ function buildIffTilesheet() {
     putU16BE(bmhd, 2, h);
     putU16BE(bmhd, 4, 0);
     putU16BE(bmhd, 6, 0);
-    bmhd[8] = 1;
+    bmhd[8] = nPlanes;
     bmhd[9] = 0;
     bmhd[10] = 0;
     bmhd[11] = 0;
@@ -1069,7 +1084,6 @@ function buildIffTilesheet() {
     bmhd[15] = 52;
     putU16BE(bmhd, 16, w);
     putU16BE(bmhd, 18, h);
-    const cmap = new Uint8Array([0, 0, 0, 255, 255, 255]);
     const bmhdChunk = iffChunk('BMHD', bmhd);
     const cmapChunk = iffChunk('CMAP', cmap);
     const bodyChunk = iffChunk('BODY', body);
@@ -1082,7 +1096,6 @@ function buildIffTilesheet() {
     ilbmInner.set(cmapChunk, p);
     p += cmapChunk.length;
     ilbmInner.set(bodyChunk, p);
-    p += bodyChunk.length;
     const form = new Uint8Array(8 + ilbmInner.length);
     form.set([0x46, 0x4F, 0x52, 0x4D], 0);
     putU32BE(form, 4, ilbmInner.length);
@@ -1090,19 +1103,20 @@ function buildIffTilesheet() {
     return form;
 }
 function buildAmiBlitz3Loader() {
-    const mapW = CONFIG.mapCols;
-    const mapH = CONFIG.mapRows;
-    const sheetW = CONFIG.sheetW;
-    const sheetH = CONFIG.sheetH;
-    const tileSize = CONFIG.tileSize;
+    const mCols = gridMapCols();
+    const mRows = gridMapRows();
+    const imgW = CONFIG.imgW;
+    const imgH = CONFIG.imgH;
+    const ts = gridTileSize;
+    const sheetCols = gridSheetCols();
     const maxTiles = getMaxTiles();
-    const tilesheetCols = CONFIG.tilesheetCols;
+    const bp = convBitplanes;
     const bitComments = bitsConfig.bits.map((b, i) => `;   Bit ${i}: ${b.name || '(unused)'}`).join('\n');
     const curMap = getCurrentMap();
     const gridDataLines = [];
     const allGridVals = [];
-    for (let r = 0; r < mapH; r++) {
-        for (let c = 0; c < mapW; c++) {
+    for (let r = 0; r < mRows; r++) {
+        for (let c = 0; c < mCols; c++) {
             allGridVals.push(curMap?.[r]?.[c] ?? 0);
         }
     }
@@ -1121,20 +1135,20 @@ function buildAmiBlitz3Loader() {
 ; Generated by RetroMapEditor -- AmiBlitz3 source
 ; --------------------------------------------------------------
 
-Dim tilemap.w(${mapW * mapH})
+Dim tilemap.w(${mCols * mRows})
 Dim tileFlags.w(${maxTiles})
 
 ${bitComments}
 
-BitMap 0, ${sheetW}, ${sheetH}, 2
-BitMap 1, 320, 256, 2
+BitMap 0, ${imgW}, ${imgH}, ${bp}
+BitMap 1, ${mCols * ts}, ${mRows * ts}, ${bp}
 LoadBitMap 0, "tiles.iff", 0
 Use BitMap 0
 BLITZ
-Slice 0,44,2
+Slice 0,44,${bp}
 
 Restore MapData
-For i = 0 To ${mapW * mapH - 1}
+For i = 0 To ${mCols * mRows - 1}
   Read tmp.w
   tilemap(i) = tmp
 Next i
@@ -1151,17 +1165,17 @@ Show 1
 Use BitMap 1
 Cls 0
 
-For y = 0 To ${mapH - 1}
-  For x = 0 To ${mapW - 1}
-    idx   = y * ${mapW} + x
+For y = 0 To ${mRows - 1}
+  For x = 0 To ${mCols - 1}
+    idx   = y * ${mCols} + x
     tile.w  = tilemap(idx)
-    srcX.w  = (tile MOD ${tilesheetCols}) * ${tileSize}
-    srcY.w  = tile / ${tilesheetCols}
-    srcY  = srcY * ${tileSize}
-    dstX  = x * ${tileSize}
-    dstY  = y * ${tileSize}
+    srcX.w  = (tile MOD ${sheetCols}) * ${ts}
+    srcY.w  = tile / ${sheetCols}
+    srcY  = srcY * ${ts}
+    dstX  = x * ${ts}
+    dstY  = y * ${ts}
     Use BitMap 0
-    GetaShape 0, srcX, srcY, ${tileSize}, ${tileSize}
+    GetaShape 0, srcX, srcY, ${ts}, ${ts}
     Use BitMap 1
     Blit 0, dstX, dstY
   Next x
@@ -1205,13 +1219,17 @@ function showAmigaPreview() {
     cachedPreviewMapBin = buildMapBinary();
     const ab3raw = buildAmiBlitz3Loader();
     cachedPreviewAb3Bytes = stringToAmigaBytes(ab3raw);
-    document.getElementById('iff-info').textContent = `${CONFIG.sheetW}×${CONFIG.sheetH} px, ${formatSize(cachedPreviewIff.length)}`;
-    document.getElementById('map-info').textContent = `${CONFIG.mapCols}×${CONFIG.mapRows} tiles, ${formatSize(cachedPreviewMapBin.length)}`;
+    const imgW = CONFIG.imgW;
+    const imgH = CONFIG.imgH;
+    document.getElementById('iff-info').textContent = `${imgW}×${imgH} px, ${formatSize(cachedPreviewIff.length)}`;
+    const mCols = gridMapCols();
+    const mRows = gridMapRows();
+    document.getElementById('map-info').textContent = `${mCols}×${mRows} tiles, ${formatSize(cachedPreviewMapBin.length)}`;
     const iffCanvas = document.getElementById('iff-preview-canvas');
     const maxDim = 240;
-    const scale = Math.min(maxDim / CONFIG.sheetW, maxDim / CONFIG.sheetH, 1);
-    iffCanvas.width = Math.round(CONFIG.sheetW * scale);
-    iffCanvas.height = Math.round(CONFIG.sheetH * scale);
+    const scale = Math.min(maxDim / imgW, maxDim / imgH, 1);
+    iffCanvas.width = Math.round(imgW * scale);
+    iffCanvas.height = Math.round(imgH * scale);
     const iffCtx = iffCanvas.getContext('2d');
     iffCtx.imageSmoothingEnabled = false;
     iffCtx.drawImage(tilesheet, 0, 0, iffCanvas.width, iffCanvas.height);
