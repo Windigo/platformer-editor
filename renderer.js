@@ -1155,6 +1155,7 @@ let pickedPngFileName = '';
 let pickedFolderPath = null;
 let modalIffBytes = null;
 let modalBp = 4;
+let projectModalMode = 'create';
 const modalBpSlider = document.getElementById('modal-bitplanes');
 const modalBpLabel = document.getElementById('modal-bp-label');
 const modalColorsLabel = document.getElementById('modal-colors-label');
@@ -1404,6 +1405,9 @@ function handleMenuAction(action) {
     switch (action) {
         case 'new':
             switchTab('level-editor');
+            document.getElementById('new-project-title').textContent = 'New Project';
+            document.getElementById('btn-modal-create').classList.remove('hidden');
+            document.getElementById('btn-modal-save-settings').classList.add('hidden');
             pickedPngDataUrl = null;
             pickedPngFileName = '';
             pickedFolderPath = null;
@@ -1430,6 +1434,13 @@ function handleMenuAction(action) {
             switchTab('level-editor');
             saveProject();
             break;
+        case 'settings':
+            if (!projectLoaded) {
+                showToast('No project loaded', 'error');
+                return;
+            }
+            showProjectSettings();
+            break;
         case 'export':
             switchTab('level-editor');
             showAmigaPreview();
@@ -1449,6 +1460,60 @@ function handleMenuAction(action) {
             break;
     }
 }
+function showProjectSettings() {
+    switchTab('level-editor');
+    projectModalMode = 'settings';
+    const titleEl = document.getElementById('new-project-title');
+    titleEl.textContent = 'Project Settings';
+    document.getElementById('btn-modal-create').classList.add('hidden');
+    document.getElementById('btn-modal-save-settings').classList.remove('hidden');
+    document.getElementById('input-project-name').value = currentProjectName;
+    document.getElementById('input-sheet-cols').value = String(CONFIG.tilesheetCols);
+    document.getElementById('input-sheet-rows').value = String(CONFIG.tilesheetRows);
+    document.getElementById('input-map-cols').value = String(CONFIG.mapCols);
+    document.getElementById('input-map-rows').value = String(CONFIG.mapRows);
+    modalBp = convBitplanes;
+    modalBpSlider.value = String(convBitplanes);
+    modalBpLabel.textContent = String(convBitplanes);
+    modalColorsLabel.textContent = `${1 << convBitplanes} color${convBitplanes !== 1 ? 's' : ''}`;
+    // load current tilesheet png for preview
+    if (tilesheet) {
+        pickedPngDataUrl = tilesheet.src;
+        pickedPngFileName = currentPngFileName;
+        document.getElementById('png-file-name').textContent = currentPngFileName;
+        document.getElementById('folder-path').textContent = currentProjectPath;
+        modalIffPreviewRow.style.display = 'block';
+        updateModalIffPreview();
+    }
+    document.getElementById('new-project-overlay').classList.remove('hidden');
+}
+document.getElementById('btn-modal-save-settings').addEventListener('click', async () => {
+    const newSheetCols = parseInt(document.getElementById('input-sheet-cols').value) || 20;
+    const newSheetRows = parseInt(document.getElementById('input-sheet-rows').value) || 20;
+    const newMapCols = parseInt(document.getElementById('input-map-cols').value) || 20;
+    const newMapRows = parseInt(document.getElementById('input-map-rows').value) || 16;
+    const newName = document.getElementById('input-project-name').value.trim() || currentProjectName;
+    CONFIG.tilesheetCols = newSheetCols;
+    CONFIG.tilesheetRows = newSheetRows;
+    CONFIG.mapCols = newMapCols;
+    CONFIG.mapRows = newMapRows;
+    CONFIG.sheetW = newSheetCols * CONFIG.tileSize;
+    CONFIG.sheetH = newSheetRows * CONFIG.tileSize;
+    CONFIG.mapW = newMapCols * CONFIG.tileSize;
+    CONFIG.mapH = newMapRows * CONFIG.tileSize;
+    convBitplanes = modalBp;
+    currentProjectName = newName;
+    mapCanvas.width = CONFIG.mapW * CONFIG.scale;
+    mapCanvas.height = CONFIG.mapH * CONFIG.scale;
+    tilesCanvas.width = CONFIG.sheetW * CONFIG.scale;
+    tilesCanvas.height = CONFIG.sheetH * CONFIG.scale;
+    drawTilesheet();
+    drawMap();
+    updateProjectUI();
+    document.getElementById('new-project-overlay').classList.add('hidden');
+    saveProject();
+    showToast('Settings saved', 'success');
+});
 async function showLoadProjectBrowser() {
     const saved = localStorage.getItem('lastProjectFolder') || (await editorApi.pickFolder());
     if (!saved)

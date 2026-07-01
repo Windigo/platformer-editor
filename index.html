@@ -15,6 +15,7 @@
         <button class="menu-item" data-action="new">New Project</button>
         <button class="menu-item" data-action="load">Load Project</button>
         <button class="menu-item" data-action="save">Save Project</button>
+        <button class="menu-item" data-action="settings">Project Settings</button>
         <hr class="menu-separator">
         <button class="menu-item" data-action="export">Export Amiga</button>
         <button class="menu-item" data-action="preview">Preview Export</button>
@@ -78,7 +79,7 @@
     <!-- NEW PROJECT MODAL -->
     <div id="new-project-overlay" class="modal-overlay hidden">
       <div class="modal">
-        <h2>New Project</h2>
+        <h2 id="new-project-title">New Project</h2>
         <div class="modal-body">
           <div class="form-group">
             <label>Project name</label>
@@ -135,6 +136,7 @@
         <div class="modal-footer">
           <button id="btn-modal-cancel" class="btn-secondary">Cancel</button>
           <button id="btn-modal-create" class="btn-primary">Create Project</button>
+          <button id="btn-modal-save-settings" class="btn-primary hidden">Save Settings</button>
         </div>
       </div>
     </div>
